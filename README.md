@@ -1,1 +1,8 @@
 # Rubiks-Cube-World-Records-Analysis
+This repository contains the work I did for my Master's Thesis at Miami Univseristy between 2020 and 2021. This project took almost a year to complete. It involved a lot of research into the field of extreme value thoery, a somewhat obscure area of statistics. Through the research done for this report, I found that most applications of extreme value theory are related to insurance. With the prediction of rare events such as large hurricanes, earthquakes, or other disaster being very important for insurance policies. I found no applications of extreme value theory for world records. I doubt I am the first to do use extreme value theory in this way, but I think it is interesting I was unable to find any published work of it.
+
+## Software
+The data cleaning, data visualization, analysis, and report writing were all conducted in R version 3.6.0 using an RMarkdown file. The necessary packages needed to run this analysis are 'data.table', 'knitr', 'ismev', 'fExtremes', 'tidyverse', and 'lubridate' and are all available through the CRAN repository as of 5/28/2021.
+
+## Data
+The data used in this analysis was obtained from the World Cube Association (WCA) at https://www.worldcubeassociation.org/results/misc/export.html. The data was accessed on September 14th, 2020. The data used for this analysis is included in the repository for reporduceability purposes. The data available from the WCA is updated every Monday. If an updated version of this analysis is conducted using the original code included in this repository, the user will need to aware that the code will need to be updated to account for the inclusion of data in the years 2021 and beyond.
