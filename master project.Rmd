@@ -1,0 +1,607 @@
+---
+title: "Analysis of Rubik's Cube World Records Through Extreme Value Theory"
+author: "Cole Falco"
+date: "4/27/2021"
+output: html_document
+---
+
+```{r setup, warning=F, message=F, echo=F}
+library(data.table)
+library(knitr)
+library(ismev)
+library(fExtremes)
+library(tidyverse)
+library(lubridate)
+
+
+setwd("Your Path") #enter the appropriate path for you
+results <- as.data.frame(fread("WCA_export_Results.tsv"))
+competitions <- as.data.frame(fread("WCA_export_Competitions.tsv"))
+
+```
+
+### Introduction
+
+The Rubik's Cube was released in 1980 and since then it has been one of the most popular puzzles in the world. As soon as people learned how to solve the Rubik's Cube, they have been timing themselves to see how quickly the cube could be solved. The first Rubik's Cube World Championship was held in Budapest, Hungary in 1982. This analysis will be a study of the world record times for the standard size 3x3x3 cube. Using Extreme Value Theory, this analysis will attempt to find the probability that the world record time of 3.47 seconds will be broken in 2021. Additionally, the relative strength of past world records will be evaluated.
+<br>
+
+### Background Information On Competitions
+
+At a World Cube Association (WCA) competition there are a variety of events. Most of which are different Rubik's Cube events, including the standard 3x3x3 size, 4x4x4, 5x5x5, 3x3x3 one handed, and many others. For the 3x3x3 event, each competitor gets five solves per round. For an individual solve, the cube is scrambled by members of the team of event organizers using computer-generated random scrambles. These scrambles are not necessarily all equal, some may be easie/harder to solve than others. But any competitor at any competition could get a one of the easier/harder solves. Because of this all scrambles are considered to be equal. Once the cube is scrambled, it is brought to a competitor while completely covered. When the competitor is ready, the cube is uncovered and the competitor has 15 seconds to inspect the cube. To begin the solve, the competitor must put both hands on the timer. Once both hands are released, the timer begins. Time only stops once the competitor has returned both hands to the timer. There are many more specifics and rules about competitions that can be seen on the WCA's website [4].
+<br>
+
+### Data
+
+The data used in this analysis comes from the WCA, the official governing body for all competitions of mechanical puzzles [5]. The WCA records the time for every solve ever performed in competition, and makes this data publically available on the WCA website. There are two data sets from the WCA that are used in this report. The first is a competitions data set, which contains `r dim(competitions)[1]` observations with the name, location, date, and other information about competitions. Table 1 contains the names of all the variables used in this analysis and a description of the variables from the competitions data set.
+
+```{r table1, echo=F}
+col1 <- cbind(c("id", "name", "cityName", "countryId", "year", "month", "day"))
+col2 <- cbind(c("ID of event", "Name of event", "Name of the city where the event was held", "Name of the country where the event was held",
+                "Year the event was held", "Month the event was held", "Day of the month the event was held"))
+
+output <- data.table(col1, col2)
+names(output) <- c("Variable", "Description")
+
+kable(output, caption = "Table 1: Competitions Variables")
+
+rm(col1)
+rm(col2)
+rm(output)
+```
+
+The second data set contains `r dim(results)[1]` observations all the results from all the events. Each observation consists of five times from a set by a person, an event id, a competition id, a person id, a person name, and other information about the set of solves. Table 2 contains the variable names and a short description of the variables used in this analysis from the results data set.
+
+```{r table2, echo=F}
+col1 <- cbind(c("competitionId", "eventId", "personName", "personId", "value1", "value2", "value3", "value4", "value5"))
+col2 <- cbind(c("Competition ID", "What event the set was from", "Name of the person performing the solves", 
+                "A unique ID for the person solving the puzzle", "The first solve in a set in seconds", "The second solve in a set in seconds", 
+                "The third solve in a set in seconds", "The fourth solve in a set in seconds", "The fifth solve in a set in seconds"))
+
+output <- data.table(col1, col2)
+names(output) <- c("Variable", "Description")
+
+kable(output, caption = "Table 2: Results Variables")
+
+rm(col1)
+rm(col2)
+rm(output)
+```
+
+<br>
+
+### Model Specification
+
+The bulk of the theory used in this analysis comes from Stuart Coles' book *An Introduction of Statstical Modeling of Extreme Values* [1]. When using extreme value models, there are two main methodologies: Block models and Peak-Over-Threshold (POT) models. For this analysis, block models will be utilized to model the probability that the current world record of 3.47 seconds is broken in 2021. 
+
+Consider a sequence of independent observations, $X_1, ..., X_n$ with a common distribution $F$. Let $M_n = max(X_1,...,X_n)$. Coles motivates the search for the distribution of $M_n$ using basic probability theory
+
+$$\begin{align*}
+    P(M_n\leq z) &= P(X_1 \leq z, ..., X_n \leq z) \\
+    &= P(X_1 \leq z)*P(X_2 \leq z)*...*P(X_n \leq z) \\
+    &= F^n(z)
+  \end{align*}
+$$
+Because the common distribution $F$ is unknown, this result does not seem initially helpful. However, Coles offers that $F^n(z)$ can be approximated using extreme data, similar to the approximation of sample means using the normal distribution through CLT. 
+
+Let $M_n^* = \frac{(M_n-b_n)}{a_n}$, where $a_n>0$ and $b_n$ are sequences of constants. The constants $a_n$ and $b_n$ are used to regulate the behavior of $F^n(z)$ as $n \rightarrow \infty$ so that $F^n(z)$ does not degenerate to 0. For now $a_n$ and $b_n$ are unknown, but this will be addressed later. 
+
+Using this, Coles gives the Extremal Types Theorem:
+$$P(M_n^* \leq z) = P(\frac{M_n-b_n}{a_n} \leq z) \rightarrow G(z) \text{ as } n\rightarrow \infty$$
+where $G(z)$ will be one of the following three distributions:
+
+$$I: G(z) = exp[-exp(-\frac{z-b}{a})], -\infty < z < \infty$$
+$$\begin{equation}
+      II: G(z) = 
+        \begin{cases}
+          0, & z \leq b, \\
+          exp[-(\frac{z-b}{a})^{-\alpha}], & z > b
+        \end{cases}
+    \end{equation}
+$$
+$$\begin{equation}
+    III: G(z) = 
+      \begin{cases}
+        exp[-(-(\frac{z-b}{a})^\alpha)], & z < b \\
+        1, & z \geq b
+      \end{cases}
+    \end{equation}
+$$
+
+where $\alpha > 0$ for $II$, and $III$. In the case of the Extremal Types Theorem, the unknown distribution $F^n(z)$ is said to be an element of the Maximum Domain of Attraction (MDA) of one of the three $G(z)$ distributions listed in the Extremal Types Theorem.
+
+These three distributions are known as the extreme value distributions, with $I$, $II$, and $III$ corresponding to the Gumbel, Frechet, and Weibull distributions, respectively. Coles goes on to further generalize this result with the Generalized Extreme Value (GEV) Theorem. 
+
+The GEV Theorem states that 
+$$P(M_n^* \leq z) = P(\frac{M_n-b_n}{a_n} \leq z) \rightarrow G(z) \text{ as } n \rightarrow \infty$$
+where $G$ is a non-degenerate distribution, then $G$ is a member of the GEV family
+
+$$G(z) = exp[-(1+\xi(\frac{z-\mu}{\sigma})^{-\frac{1}{\xi}})]$$
+defined on $\{z:1+\xi(z-\mu)/\sigma > 0\}$, where $-\infty < \mu < \infty$, $-\infty < \xi < \infty$, and $\sigma > 0$.
+
+
+This result states that no matter what the common distribution $F$ is the distribution of the maximum will approach a single distribution $G(z)$. It's no wonder the GEV Theorem is called the CLT of Extreme Value Theory! Depending on the value of the shape parameter $\xi$, $G(z)$ stated in the GEV theorem will become one of the three possible distributions (Gumbel, Frechet, or Weibull) stated in the Extremal Types Theorem. When $\xi = 0$, $G(z)$ will converge to the Gumbel distribution. In practice $\xi$ cannot equal exactly 0, but $G(z)$ will converge to a Gumbel distribution as $\xi \rightarrow 0$. When $\xi > 0$, $G(z)$ will converge to the Frechet distirbution. Finally, when $\xi < 0$, $G(z)$ will converge to the Weibull distribution. This is an incredibly useful result that will be used to guide the entirety of the analysis.
+
+Now return to the sequences of constants $a_n$ and $b_n$ mentioned earlier. These constants are needed to ensure that $G(z)$ does not degenerate to 0. However, they are unknown, so how can this analysis precede? The answer is surprisingly simple. Note that:
+$$
+\begin{align*}
+  P(M_n \leq z) &= P(\frac{M_n-b_n}{a_n} \leq \frac{z-b_n}{a_n}) \\
+  & \approx G(\frac{z-b_n}{a_n}) \\
+  & =exp[-(1+\xi(\frac{\frac{z-b_n}{a_n}-\mu}{\sigma})^{-\frac{1}{\xi}})] \\
+  & =exp[-(1+\xi(\frac{z-b_n-a_n\mu}{a_n\sigma})^{-\frac{1}{\xi}})] \\
+  & =exp[-(1+\xi(\frac{z-\mu^*}{\sigma^*})^{-\frac{1}{\xi}})] \\
+  & =G^*(z)
+\end{align*}
+$$
+Therefore, $P(M_n \leq z)$ can be approximated by $G^*(z)$ which is another member of the same GEV family as $G(z)$. Therefore, the constants $a_n$ and $b_n$ do not need to be found in practice because $\mu^*$ and $\sigma^*$ are estimated directly from the data set of maxima. It is this result that leads to the main point of the block method. The data are broken into blocks of size $n$, where the maximum of each block is taken. This creates a sequence of $m$ maxima $M_{n,1}, ...M_{n,m}$. This sequence of maxima are then used to fit the GEV distribution.
+
+In order to fit the GEV distribution from the sequence of maxima, MLEs for $(\mu, \sigma, \xi)$ will be estimated. Coles offers two log-likelihood functions. The first is when $\xi \neq 0$:
+$$l(\mu, \sigma, \xi) = -mlog(\sigma) -(1+\frac{1}{\xi})\sum_{i=1}^mlog[1+\xi(\frac{z_i-\mu}{\sigma})]-\sum_{i=1}^m[1+\xi(\frac{z_i-\mu}{\sigma})]^{-\frac{1}{\xi}}$$
+defined on $1+\xi(\frac{z_i-\mu}{\sigma})>0$, for $i=1,...,m$.
+The second is when $\xi \rightarrow 0$:
+$$l(\mu,\sigma) = -mlog(\sigma)-\sum_{i=1}^m(\frac{z_i-\mu}{\sigma})-\sum_{i=1}^mexp[-(\frac{z_i-\mu}{\sigma})]$$.
+
+These log-likelihood functions are drawn from the function of $G(z)$ found in the GEV theorem. There are no analytical solutions to these log-likelihood functions, but MLEs can be found using numerical optimization. It is the first of these log-likelihood functions that are of primary interest in this analysis. The $\hat\xi$ found in this analysis does not equal 0, indicating the first log-likelihood function is of use in this analysis. It is using this log-likelihood function that a profile likelihood for any of the parameters $(\mu, \sigma, \xi)$ could be created.
+
+The MLEs generated from a GEV model do not meet the usual regularity conditions that are required of MLEs for the usual asymptotic properties to hold. This is because the end points of the GEV model are functions of the parameters. However, despite not meeting the usual regularity conditions, it is still possible for MLEs from a GEV model to have the usual asymptotic properites associated with MLEs. In the case of GEV models, Smith concludes that MLEs derived from a 3-parameter Weibull distribution can follow the usual asymptotic properties of normally distributed, consistent, and efficiency [2]. The 3-parameter Weibull distribution can be reparameterized as the same GEV distribution that is used in this analysis. If $\xi > -0.5$, the MLEs derived from a GEV distribution will hold the asymptotic properties listed above. The exact theoretical justification for this case goes beyond the scope of this analysis, but the curious reader is invited to view Smith's work for greater detail.
+
+So far this has been the theory for the distribution of the maximum. This analysis is interested in the world record solve time for the Rubik's Cube. This is the minimum solve time. Thankfully, much of the theory behind the estimate of the maximum applies to the estimation of the minimum, with only a few minor changes.
+
+Let $\tilde{M}_n = min(X_1, ...,X_n)$ and $Y_i = -X_i$ for $i=1,..,n$. Now also let $M_n = max(Y_1,...,Y_n)$. Therefore, $\tilde{M}_n = -M_n$.
+For large $n$ it follows that:
+$$\begin{align*}
+    P(\tilde{M}_n \leq z)&= P(-M_n \leq z) \\
+    &= P(M_n > -z) \\
+    &= 1-P(M_n \leq z) \\
+    &\approx 1-exp[-(1+\xi(\frac{-z-\mu}{\sigma}))^{-\frac{1}{\xi}}] \\
+    &= 1-exp[-(1-\xi(\frac{z-\tilde{\mu}}{\sigma}))^{-\frac{1}{\xi}}]
+  \end{align*}
+$$
+on $\{z:1-\xi(z-\tilde\mu)/\sigma>0\}$, where $\tilde{\mu}=-\mu$. 
+
+From this the GEV Theorem for Minima arises.
+$$P(\tilde{M}_n^* \leq z) = P(\frac{\tilde{M}_n-b_n}{a_n} \leq z) \rightarrow \tilde{G}(z) \text{ as } n \rightarrow \infty$$
+where $\tilde{G}$ is a non-degenerate distribution, then $\tilde{G}$ is a member of the GEV family
+
+$$\tilde{G}(z) = 1-exp[-(1-\xi(\frac{z-\tilde{\mu}}{\sigma})^{-\frac{1}{\xi}})]$$
+defined on $\{z:1-\xi(z-\tilde{\mu})/\sigma > 0\}$, where $-\infty < \tilde{\mu} < \infty$, $-\infty < \xi < \infty$, and $\sigma > 0$.
+
+From here the application of the GEV Theroem for Minima can be applied almost exactly as the GEV Theorem, expect instead of taking the maxima from the blocks, the minima will be taken.
+
+The last issue of note is the underlying assumption that the original observations $X_1,...,X_n$ are independent. This assumption is used to ensure that sequence of minima $Z_1,...,Z_m$ are also independent. It very unlikely that the data used in this analysis would be independent of each other. Many of the obersvations are performed by the same people across a variety of competitions and years. There is almost certainly some correlation between solves by the same person. However, Coles states that even in cases where there is dependence between $X_i$ it is still possible for $Z_i$ to be independent. Coles does not offer any other information on when this may be the case and when not. To make the assumption of independence between $Z_i$ more credible, the observations that make up the blocks will be randomly selected without replacement from the data. 
+<br>
+
+### Data Preparation
+
+Before any analysis can be conducted, a single data set needs to be prepared. The results data set contains almost all the information that this analysis will need. To prepare this data set, all observations from events not in the 3x3x3 event will be removed because this analysis will specifically be looking at the 3x3x3. Additionally, the variables value1, value2, value3, value4, value5 will need to be reformated. The value variables are in seconds, however there are no decimal points marking the tenths and hundreths of a second. Therefore, each value will need to be divided by 100 to properly represent the time. Then all incomplete times will be removed from the data set because they do not give information about the single world record. Finally, the results data set needs to be switched from a wide to tall format.
+
+The competitions data set is needed in this analysis for the date that a competition was held. Over time the world records for Rubik's cubes have continued to decrease and this is because competitors are continuing to improve at solving the cube. For this reason it is likely there is a some time component in the data that will need to be accounted for in the analysis. With the data sets provided by the WCA this is the only way to assign a date variable to a solve. Therefore, the data preparation for the competitions data set will consist of making a single date variable out of the three variables "year", "month", and "day". 
+
+Finally, in the data preparation, the results and competitions data sets will be merged into one data set by the competition ID found in both data sets.
+
+```{r data cleaning, echo=F}
+#coded values of 0, -1, and -2 will need to be removed, to be done after converting from wide to tall
+
+#pull only the 3x3 results from the results data set along with some identifying variables
+threes <- results%>%
+  filter(eventId == "333")%>%
+  select(competitionId, personName, personId, value1, value2, value3, value4, value5)
+
+#create a date variable and select important variables from the competitions data set
+competitions2 <- competitions%>%
+  mutate(Date = ymd(paste(year, month, day, sep = "-")))%>%
+  select(Date, id, name, countryId)
+
+#merge the results and competitions data sets into one
+threes <- inner_join(threes, competitions2, by = c("competitionId" = "id"))
+
+#change the data set from wide to tall
+tall <- threes%>%
+  gather(key = "number", value = "solve", -c(Date, personName, personId, name, countryId, competitionId))%>%
+  arrange(Date, personName)
+
+#remove incomplete times and format solves correctly
+tall[,8][tall[,8]==-1 | tall[,8]==-2 | tall[,8]==0] <- NA
+
+tall <- tall%>%
+  select(Date, personName, solve, competitionId, personId, name, countryId)%>%
+  na.omit()%>%
+  mutate(solve = solve/100, Year = year(Date))
+
+rm(results)
+rm(threes)
+rm(competitions)
+rm(competitions2)
+```
+
+
+```{r cdfs, include=F}
+set.seed(12345)
+y1 <- rgev(1000, xi=0, mu=0, beta=1)
+y2 <- rgev(1000, xi=0.3, mu=0, beta=1)
+y3 <- rgev(1000, xi=-0.3, mu=0, beta=1)
+
+ggplot()+
+  geom_density(aes(x = y1), alpha = 0.3, fill = "blue", color = "blue")+
+  labs(x = "Sample Values", y = "Density", title = "Sample Gumbel")+
+  theme_bw()
+
+ggplot()+
+  geom_density(aes(x = y2), alpha = 0.3, fill = "red", color = "red")+
+  labs(x = "Sample Values", y = "Density", title = "Sample Frechet")+
+  theme_bw()
+
+ggplot()+
+  geom_density(aes(x = y3), alpha = 0.3, fill = "green", color = "green")+
+  labs(x = "Sample Values", y = "Density", title = "Sample Weibull")+
+  theme_bw()
+
+rm(y1)
+rm(y2)
+rm(y3)
+```
+
+
+### Exploratory Data Analysis
+
+Table 3 shows summary statistics for the solve times, broken up by the years.
+
+```{r table3, echo=F}
+#creating a data set of the summary statistics
+summary <- tall%>%
+  group_by(Year)%>%
+  summarize(Median=round(median(solve), 2),
+            IQR = round(IQR(solve), 2),
+            Mean = round(mean(solve), 2),
+            Std.Dev = round(sd(solve), 2),
+            Max = round(max(solve), 2),
+            Min = round(min(solve), 2),
+            Number = n())
+
+kable(summary, caption = "Table 3: Summary Statistics")
+```
+
+From this table there are a few conclusions that are noticible right away. First, there is a large gap in the data between the year 1982 and 2003. Additionally, the years up to 2008 have a much smaller number of solves than the years following 2008. It can be seen that excluding 1982 and 2003, the median, IQR, mean, and standard deviation continue to decrease as the years go on. As suspected, there does appear to be a time component related to the solve times.
+
+Figure 1 shows the median, mean, and minimum solve times by year.
+
+```{r figure 1, echo=F}
+#making a plot of the median, mean, and min
+ggplot()+
+  geom_line(aes(x = Year, y = Median), color = "red", data = summary)+
+  geom_line(aes(x = Year, y = Mean), color = "blue", data = summary)+
+  geom_line(aes(x = Year, y = Min), color = "green", data = summary)+
+  labs(x = "Year", y = "Summary Statistics", title = "Figure 1: Summary Statistics of 3x3x3 Solve Times")+
+  theme_bw()
+
+rm(summary)
+```
+
+From the Figure 1 it can see that the median, mean, and minimum solve times are all decreasing exponentially from 2004 onwards. This makes sense because as solve times get lower and lower it becomes harder to continue improving on those times. It is much easier to improve from a one minute solve time down to 30 seconds than is it to improve from a 10 seconds solve time down to 5 seconds. Additionally, the rate of decrease in these statistics looks very similar. The lines look like they are the same, just with different intercepts.
+
+Based on Table 3 and Figure 1, it is reasonable to exclude the solve times from 1982. There are so few of the solve times and they are so disconnected from the other solve times in the data set it is unlikely they are connected in any meaningful way with the data. Therefore, they will be removed from the remainder of the analysis. Additionally, all times over two minutes will be excluded because the interest of this analysis is in the world record times.
+
+```{r data cleaning 2, echo=F}
+#removing the 1982 observations and observations greater than 2 minutes
+tall <- tall%>%
+  filter(Year != 1982, solve <= 120)
+
+#this needs to be done so that the density plots can be made by year
+tall <- tall%>% 
+  mutate(time = as.integer(as.factor(Year)))
+
+```
+
+Figure 2 shows the density plot of solve times by year.
+
+```{r Figure 2, echo=F}
+#make a density plot for each year
+ggplot()+
+  geom_density(aes(x = solve, color = as.factor(Year), fill = as.factor(Year)), alpha = 0.3, data = tall)+
+  labs(x="Solve Times", y = "Density", color = "Year", fill = "Year",
+       title = "Figure 2: Density Plot by Year")+
+  theme_bw()
+
+```
+
+From Figure 2, there are two immedate observations. The first is that as the years go on, the spread of the distribution of solve times is decreasing. This could be because there are many more solves in 2019 compared to 2004. With a larger number of observations, it is reasonable that the variability of the data will decrease. However, the decrease in spread could be a result of general improvement by the speed cubing community. As a person continues to improve their skills at solving the Rubik's Cube, it is natural to think that the person will become more consistent in their solve times. The second observation is that the distributions are shifting to the left over time. This comes from the decreasing mean that was seen in Table 3.
+
+Figure 3 shows scatter plots of the solve times for Feliks Zemdegs, Max Park, and Yusheng Du. Feliks Zemdegs is almost universally consider to be the greatest competitor of all time. Max Park is considered to be the best competitor overall currently. Yusheng Du is the current world record holder for the 3x3x3 single solve.
+
+```{r figure 3, echo=F}
+#creating a data set of the three competitors mentioned above
+individual <- tall%>%
+  filter(personId=="2009ZEMD01" | personId=="2012PARK03" | personId=="2015DUYU01")%>%
+  select(Date, personName, solve)%>%
+  mutate(personName=ifelse(personName=="Yusheng Du (æœå®‡ç”Ÿ)", "Yusheng Du", personName)) #fix Yushengs name, R didn't like the chinese characters
+
+#plot the solve times from the data set
+ggplot(data=individual)+
+  geom_point(aes(x = Date, y = solve))+
+  facet_grid(.~personName)+
+  labs(x = "Date", y = "Solve Time", title = "Figure 3: Solve Times for Feliks, Max, and Yusheng")+
+  theme_bw()
+
+rm(individual)
+```
+
+From the Figure 2 it can be seen that for all three cubers their sovle times have decreased over time. This is a fairly obvious result because it would be expected that people will continue to improve and lower their solve times as they continue to go to competitions. Max's plot is particularly interesting because he shows the greatest improvement of the three solvers. When he first went to competitions he has solves in the mid 20 seconds and now has solves in the range of 5 seconds. 
+Feliks on the other hand started out with solves that are around 12 seconds and over time has steadily declined to around the 5 second mark. Yusheng has the least amount of data. But like the other two his plot shows a decline in solve times as he continued to attend competitions. 
+Yusheng started much later than the other two, with the first solves being after 2015. While Yushengs times have decreased, they have not gone as low as Felik's and Max's solves. His world record solve can clearly be seen as an outlier from the rest of his solve times.
+<br>
+
+### Modeling
+
+**Detrending the Data**
+
+As seen in the EDA, there is a time component related to the solve times. The first part of the modeling process will then be to remove this time trend from the data. There are two potential ways this time trend could be removed. The first is to fit a regression model of the form $$E(Solve Times_i) = \beta_0 + \beta_1 e^{-time} +\epsilon_i$$ where time is a numeric variable corresponding to the year. For instance, 1 would be 2003, 2 would be 2004, and so on. The second approach would be to fit a regression model of the form $$E(Solve Times_i) = \beta_0 + \beta_1 \frac{1}{time} +\epsilon_i$$ After detrending based on the time, the distributions of solve times in any year should look like the distribution of any other year.
+
+```{r detrend the data, echo=F}
+mdl1 <- lm(solve~exp(-time), data = tall)
+mdl2 <- lm(solve~I(1/time), data = tall)
+
+detrend1 <- data.frame(res = resid(mdl1), t = tall$time)
+detrend2 <- data.frame(res = resid(mdl2), t = tall$time)
+
+
+ggplot()+
+  geom_density(aes(x = res, color = as.factor(t), fill = as.factor(t)), alpha = 0.3,  data = detrend1)+
+  labs(x = "Detrended Solves", y = "Density", color = "Time", fill = "Time",
+       title = "Figure 4: Density of Exponential Detrend of Solves", subtitle = "From 2003 to 2020")+
+  theme_bw()
+
+ggplot()+
+  geom_density(aes(x = res, color = as.factor(t), fill = as.factor(t)), alpha = 0.3,  data = detrend2)+
+  labs(x = "Detrended Solves", y = "Density", color = "Time", fill = "Time",
+       title = "Figure 5: Density of Invserse Detrend of Solves", subtitle = "From 2003 to 2020")+
+  theme_bw()
+
+rm(mdl1)
+rm(mdl2)
+rm(detrend1)
+rm(detrend2)
+```
+
+Figure 4 shows the exponential time detrend of the solve times. The distributions of the solve times are more similar than they were before time detrending. However, they are still not as similar as would be expected. 2003 (Time = 1) and 2004 (Time = 2) are much more spread out that the other years and are shifted much further left than the others. The distirbution for the years 2020 (Time = 18) and 2014 (Time = 12) are also appear to have similar spreads, but have different locations, with 2014 being shifted further right. Additionally, we see that years such as 2009 (Time = 8) 2010 (Time = 9) have larger spread than 2014, but seem to have the same location. 
+
+Figure 5 shows the inverse time detrend of the solve times. These distributions look much more similar to each other, as is expected. The early years of 2003, 2004, 2005 (Time = 3), 2006 (Time = 4), and 2007 (Time = 5) appear distinct from the rest of the distributions. The have larger spreads and their locations tend to be shifted further to the left. However, from 2008 (Time = 6) onwards, the distributions are much better. The are not identical, but their locations and spreads are very similar.
+
+The conclusion from this is that the inverse time detrend is more effective, but only from 2008 onwards. As previously noted in the EDA, there are much fewer solves in the years 2003 to 2007 compared with 2008 onwards. Given the relatively few solves in those years and the distributions of those years after inverse detrending, those years will be excluded from the rest of the analysis. An area of future analysis may seek to include these years in the analysis as well. But for this analysis removing them will be sufficient.
+
+
+```{r removing years, echo=F}
+trenddata <- tall%>%
+  filter(time != 1, time != 2, time != 3, time != 4, time != 5)
+
+mdl3 <- lm(solve~I(1/time), data = trenddata)
+int <- summary(mdl3)$coefficients[1,1]
+co <- summary(mdl3)$coefficients[2,1]
+
+trend <- function(vector, t){
+  a <- vector-(int+co*I(1/t))
+  res <- as.numeric(a)
+  return(res)
+}
+
+mean_trend <- function(t){
+  a <- int+co*I(1/t)
+  return(as.numeric(a))
+}
+
+
+trenddata2 <- trenddata%>%
+  mutate(res = trend(trenddata$solve, trenddata$time),
+         index = 1:length(trenddata[,1]))
+
+ggplot()+
+  geom_density(aes(x = res, color = as.factor(time), fill = as.factor(time)), alpha = 0.3,  data = trenddata2)+
+  labs(x = "Detrended Solves", y = "Density", color = "Time", fill = "Time",
+       title = "Figure 6: Density of Invserse Detrend of Solves", subtitle = "From 2008 to 2020")+
+  theme_bw()
+
+rm(trenddata)
+```
+
+Figure 6 shows the density plot of the detrended solve times by year. It can be seen that the distributions are all fairly similar. The location and spread of the distributions all appear roughly the same. 
+
+
+**Selecting a Block Size**
+
+```{r block size, echo=F}
+size <- 5000
+N <- length(trenddata2[,8])
+M <- (length(trenddata2[,8])%/%size)
+
+divisors <- function(x){
+  y <- seq_len(x)
+  z  <- y[x%%y == 0]
+  return(z)
+}
+
+potential_n <- divisors(N)
+
+```
+
+With the goal of detrending the data accomplished, it is time to move on the next step. According to Coles, the choice of block size is an important one because it a choice between bias and variance in the estimation. If a block size is too small the approximation $$P[(M_{nk}-b_{nk})/a_{nk}\leq z]\approx G(z)$$ will have bias because the approximation is reliant on $n$ being large. On the other hand, if block sizes are too large, there will be less blocks and therefore less minima from blocks. With too few minima to work with, the variance of the estimation will increase. This analysis likely does not need to worry about either of these problems as there are so many observations in the data set. A block size of 5000 was chosen because it is sufficiently large to ensure there is minimal bias in the approximation.* A block size 5000, will give 707 minima This will be enough minima to ensure that the variance of estimations is not too large. 
+
+The elements of the blocks will be selected randomly from the data set, without replacement. The minima from the block will be added to a new data set of minima. This process will then repeat until all 707 blocks have been selected and their minima added to the data set.
+
+*Note: Blocks must have the same size $n$. With a block size of 5000, there are an extra 170 observations that are not selected to be in any of the blocks. There is really no way around having these extra observations. There are `r N` observations in the data set. The two nearest divisors to 5000 are 30 and 117839. 30 is too small to be $n$ and would likely create bias. However, using 117839 for $n$ would only give 30 minima to work with. This is likely too few and would create large variance in the estimations. Therefore, 5000 was used because it balances the issues of bias and variance, while having a relatively small number of extra observations that are not included in any blocks.
+
+**GEV Distribution**
+
+Using the block size of 5000, the analysis will now proceed with the selection of the minima and determining the GEV distribution.
+
+```{r blocks, warning=F, message=F, echo=F}
+set.seed(1234)
+
+i <- 1
+
+rand_index <- sample(1:N, N, replace=F)
+
+mins <- data.frame(NULL)
+
+for(k in 1:M){
+  ind <- rand_index[i:(i+(size-1))]
+  sub <- trenddata2%>%
+    filter(index %in% ind)
+  temp <- sub%>%
+    filter(solve==min(solve))
+  mins <- rbind(mins, temp[1,])
+  i <- i+size
+}
+
+
+ggplot()+
+  geom_density(aes(x = solve), color = "blue", fill = "blue", alpha = 0.3, data = mins)+
+  labs(x = "Solve Time", y = "Density", title = "Figure 7: Distribution of Minima", subtitle = "Solve Times")+
+  theme_bw()
+
+ggplot()+
+  geom_density(aes(x = res), color = "purple", fill = "purple", alpha = 0.3, data = mins)+
+  labs(x = "Detrended Solve Time", y = "Density", title = "Figure 8: Distribution of Minima", subtitle = "Detrended Solve Times")+
+  theme_bw()
+
+rm(sub)
+rm(temp)
+rm(ind)
+rm(i)
+rm(k)
+rm(rand_index)
+
+```
+
+Figure 7 shows the distribution of the minima that were selected from the random blocks in the form of their solve times. Figure 8 shows the same as Figure 7, but in the form of the detrended values. Based off intuition and experience with solving the Rubik's Cube, the distribution in Figure 7 looks to be about what the researcher would expect to see in a distribution of minima. 
+
+Now that the data set of minima has been created, it is time to find the MLE values. With the use of the package `ismev`, finding the MLEs for $\mu$, $\sigma$, and $\xi$ is very straightforward. The `ismev` package contains a function `gev.fit` which optimizes the log-likelihood functions given by Coles that were discussed in the methods section. 
+
+```{r parameter esitmates, echo=F}
+a <- gev.fit(mins$res)
+MLEs <- a$mle
+
+lbmres <- MLEs[1] - qnorm(0.975)*a$se[1]
+ubmres <- MLEs[1] + qnorm(0.975)*a$se[1]
+
+lbsres <- MLEs[2] - qnorm(0.975)*a$se[2]
+ubsres <- MLEs[2] + qnorm(0.975)*a$se[2]
+
+lbxres <- MLEs[3] - qnorm(0.975)*a$se[3]
+ubxres <- MLEs[3] + qnorm(0.975)*a$se[3]
+
+
+output <- data.frame(Parameters = c("Mu", "Sigma", "Xi"), Estimate = MLEs, `Std Error` = a$se, Lower = c(lbmres, lbsres, lbxres), 
+                      Upper = c(ubmres, ubsres, ubxres))
+
+kable(output, caption = "Table 4: MLE Estimates for the Minima Detrended Solve Times")
+
+rm(lbmres)
+rm(lbsres)
+rm(lbxres)
+rm(ubmres)
+rm(ubsres)
+rm(ubxres)
+rm(output)
+```
+
+In Table 4 it shows $\hat\xi$ is `r round(MLEs[3], 3)`. Therefore, the regularity conditions for MLEs are met and all the asymptotic properties of MLEs apply to this analysis. Because the regularity conditions have been met, the parameter estimates $(\hat\mu, \hat\sigma, \hat\xi)$ are approximately multivariate normally distributed. The lower and upper bounds shown in Table 4 are the confidence intervals of the parameters made based on the multivariate normal assumption.
+
+
+**Goodness-of-Fit**
+
+To check the model, again this analysis will rely on the work of Coles. Coles offers two graphical methods to check the goodness-of-fit for the GEV model. The first is the probability plot. The probability plot is a comparison of the empirical and fitted distribution functions. The fitted distirbution comes from the fitted GEV model found. The empirical model is based on the order statistics of the minima. The empirical distribution follows the form:
+$$\hat G(z_{(i)}) = \frac{i}{m+1}$$
+
+For a well fit model, it is expected that $\hat{\tilde{G}}(z_{(i)})\approx \hat G(z_{(i)})$, where $\hat{\tilde{G}}(z_{(i)})$ is the fitted GEV distribution found in this analysis. A weakness of the probability plot is that both $\hat{\tilde{G}}(z_{(i)})$ and $\hat G(z_{(i)})$ will tend to approach 1 as values of $z_{(i)}$ increases.
+
+Another graphical goodness-of-fit check is the quantile plot. The quantile plot is similar to the probabiltiy plot, expect it uses the inverse function $(\hat{\tilde{G^{-1}}}(\frac{i}{m+i}), z_{(i)})$ for $i = 1,..., m$. This function takes the form:
+$$\hat{\tilde{G^{-1}}}(\frac{i}{m+1}) = \hat\mu-\frac{\hat\sigma}{\hat\xi}[1-(-log(\frac{i}{m+1}))^{-\hat\xi}]$$
+
+For both of these diagnostic plots, a well fitted model will remain close to the diagonal across the plot. To make these plots, two functions `gev.pp` and `gev.qq` from the `ismev` package will be used.
+
+```{r goodness of fit, echo=F}
+gev.pp(a$mle, a$data)
+gev.qq(a$mle, a$data)
+```
+
+Both the probability plot and the quantile plot look very good. There is only a few points on the quantile plot that depart from the diagonal line, but only minimally. Therefore, it can be concluded that the model is fits well.
+
+**Inference**
+
+The analysis will now estimate the probability that the world record time of 3.47 seconds will be broken in 2021. Using the inverse time detrending model found earlier, an estimate of the mean solve time for the year 2021 can be found. Then a residual for the solve time of 3.47 seconds in 2021 can be found. Using the function `pgev` from the package `fExtremes`, finding the probability of this residual is very straightforward. The `pgev` function works very similar to the `pnorm` function expect it follows the fitted GEV distribution found in this report.
+
+```{r beating world record, echo=F}
+#t=19 corresponds to 2021 in the detrending model
+
+wr_21 <- mean_trend(19)
+res_21 <- min(trenddata2$solve)-wr_21
+
+p <- pgev(res_21, xi = MLEs[3], mu = MLEs[1], beta = MLEs[2])[1]
+
+```
+Following this method, the probability of seeing the world record time broken in 2021 is `r round(p, 5)`.
+
+Using this method, it is possible to measure the strength of a world record. What this means, is comparing the time of a world record solve versus the skill level at the time. A time with a smaller probability of being beaten in a certain year can be considered a stronger world record than a time that has a higher probability of being broken.
+
+```{r skill level, warning=F, message=F, echo=F}
+world_records <- trenddata2%>%
+  group_by(Year)%>%
+  summarize(WR = min(solve))
+
+for(i in 2:dim(world_records)[1]){
+  world_records$WR[i] = ifelse(world_records$WR[i]>=world_records$WR[i-1], world_records$WR[i-1], world_records$WR[i])
+}
+
+world_records$t <- 6:18
+
+world_records$Res <- (world_records$WR-mean_trend(world_records$t))
+
+world_records$Probability <- rep(NA, dim(world_records)[1])
+
+for(i in 1:dim(world_records)[1]){
+  world_records$Probability[i] <- pgev(world_records$Res[i], xi = MLEs[3], mu = MLEs[1], beta = MLEs[2])[1]
+}
+
+ggplot()+
+  geom_line(aes(x = Year, y = Probability), color = "purple", data = world_records)+
+  labs(x = "Years", title = "Figure 9: Probability of a Beating a World Record")+
+  theme_bw()
+
+kable(world_records, caption = "Table 5: Probability of Breaking a World Record")
+
+#c("6"="2008", "7"="2009", "8"="2010", "9"="2011", "10"="2012", "11"="2013", "12"="2014", "13"="2015", 
+#"14"="2016", "15"="2017", "16"="2018", "17"="2019", "18"="2020")
+
+```
+
+The pattern in the probability of seeing a better world record time is interesting. After a new world record is set, the probabitlity of beating that time decreases. Then as the general skill level of competitors increases, the probability of beating the world record increases, until it is broken. Then the pattern repeats itself. In 2017, the world record had the highest probability of being broken with `r round(max(world_records$Probability), 5)`. However, even that is a very small probability. This analysis really displays how impressive it is break the Rubik's Cube world record time. In the years 2008 to 2011 the probability of beating the world record time was so small, the values get rounded to 0. This implies that for the year they occurred, these world records were the strongest seen in this report.
+
+A potential idea for further analysis, could be creating confidence intervals for the estimated probabilities seen here. A way these confidence intervals could be created would be in the same vein as confidence intervals created around return level estimates in extreme value theory. These confidence intervals are created using the Delta Method and the parameter estimates found. The exact form these Delta Method intervals would take is unknown to the researcher at this time, but it is an interesting area of further consideration.
+<br>
+
+### Conclusion
+
+Using Extreme Value Theory, this analysis fit a GEV distribution for the solve times of the 3x3x3 Rubik's Cube. With this fitted distribution, a predicted probability of someone beating the world record in 2021 was found. Additionally, the relative strength of world records since 2008 were evaluated using the probabitlity of seeing a better time. The fitted model passed both graphical goodness-of-fit tests, indicating that the model is well fit.
+
+There are many possible areas of further study that could stem from this analysis. The first deals with improvements in this analysis itself. A more robust method of selecting block size is one possible improvement area. Another possible improvement could be in the detrending regression model used. Instead of using the year as a time variable, months could possible be used instead. This approach could also potentially serve as a fix to potential issues dealing with the block size selection.
+
+Other areas of future study, related to this report are using POT methods of extreme value theory to create a model. Block methods are just one way to approach extreme value methods. However, a POT method approach to this analysis may result in more concrete conclusions and a stronger analysis. In addition to POT methods, the methodology in this report could be used as a template for the analysis of any other type of world record. Depending on whether the record was a maximum or a minimum, this analysis could model both with some adjustments.
+<br>
+
+### Works Cited
+1) Coles, Stuart. *An Introduction to Statistical Modeling of Extreme Values*. Springer. 2001.
+
+2) Smith, Richard. *Maximum Likelihood Estimation in a Class of Non-regular Cases*. Biometrika. Issue 72. pg 67-90. 1985.
+
+3) Miljkovic, Tatjana; Causey, Ryan; Jovanovic, Milan. *Assessing the Performance of Confidence Intervals for High Quantiles of Burr XII and* 
+      *Inverse Burr Mixtures*. Communication in Statistics - Simulation and Computation. 2020.
+
+4) "Regulations - Events". *World Cube Association*. URL https://www.worldcubeassociation.org/regulations/#article-9-events. Accessed: 3/21/2021.
+
+5) "Results Export". *World Cube Association*. URL https://www.worldcubeassociation.org/results/misc/export.html. Accessed: 9/14/2020
+
+6) Gilleland, Eric. "ismev". URL https://cran.r-project.org/web/packages/ismev/ismev.pdf. Accessed: 3/30/2021.
+
+7) Wuertz, Diethelm; Setz, Tobias; Chalabi, Yohan. "fExtremes". URL https://cran.r-project.org/web/packages/fExtremes/fExtremes.pdf. Accessed." 
+        4/2/2021.
+
+8) R Core Team (2017). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. 
+        URL https://www.R-project.org/
